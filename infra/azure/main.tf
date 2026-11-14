@@ -159,6 +159,12 @@ resource "azurerm_container_app_environment" "this" {
   logs_destination           = "log-analytics"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
   tags                       = var.tags
+
+  # Without a workload profile Azure makes an express environment, which cannot read Key Vault secrets.
+  workload_profile {
+    name                  = "Consumption"
+    workload_profile_type = "Consumption"
+  }
 }
 
 resource "azurerm_container_app" "hub" {
