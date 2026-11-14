@@ -25,8 +25,8 @@ output "download_storage_account" {
 }
 
 output "custom_domain_verification_id" {
-  description = "The value of the TXT record asuid.<hostname> that proves to Azure you own the custom domain."
-  value       = azurerm_container_app.hub.custom_domain_verification_id
+  description = "The value of the TXT record asuid.<hostname> that proves to Azure you own the custom domain. It goes into a public DNS record, so it is not a secret."
+  value       = nonsensitive(azurerm_container_app.hub.custom_domain_verification_id)
 }
 
 output "custom_domain_target" {
