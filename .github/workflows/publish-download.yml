@@ -53,7 +53,7 @@ jobs:
         with:
           name: ${{ inputs.artifact }}
           path: files
-      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+      - uses: azure/login@v2
         with:
           client-id: ${{ vars[format('AZURE_CLIENT_ID_{0}', inputs.environment == 'production' && 'PRODUCTION' || 'DEVELOP')] }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
