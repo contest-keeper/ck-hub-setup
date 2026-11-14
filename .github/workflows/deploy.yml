@@ -28,6 +28,10 @@ on:
         required: false
         default: true
         type: boolean
+    secrets:
+      registry_token:
+        description: GitHub token with read:packages, to pull a private Hub image
+        required: false
 
 permissions:
   contents: read
@@ -49,6 +53,7 @@ jobs:
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       TF_VAR_image: ghcr.io/contest-keeper/ck-hub:${{ inputs.image_tag }}
+      TF_VAR_registry_password: ${{ secrets.registry_token }}
       TF_IN_AUTOMATION: "true"
     defaults:
       run:

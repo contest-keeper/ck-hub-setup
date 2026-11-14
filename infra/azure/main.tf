@@ -160,6 +160,26 @@ resource "azurerm_container_app" "hub" {
     value = "postgres://ckhub:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.hub.name}?sslmode=require"
   }
 
+  # The image is private, so Azure signs in to ghcr.io with a token that can only read packages.
+  dynamic "secret" {
+    for_each = var.registry_password != "" ? [1] : []
+
+    content {
+      name  = "registry-password"
+      value = var.registry_password
+    }
+  }
+
+  dynamic "registry" {
+    for_each = var.registry_password != "" ? [1] : []
+
+    content {
+      server               = "ghcr.io"
+      username             = "contest-keeper"
+      password_secret_name = "registry-password"
+    }
+  }
+
   ingress {
     external_enabled           = true
     target_port                = 8088
