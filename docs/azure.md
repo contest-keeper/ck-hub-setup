@@ -92,12 +92,9 @@ Then tell the Hub about your sticks from Keeper Forge (`ck-forge registry push -
 
 ## A name of your own for the Hub
 
-**Not usable today.** The Hub runs in an *express* Container Apps environment (the subscription allows only
-one regular environment), and Azure refuses custom domains there: the deploy stops with
-`ExpressCustomDomainsNotSupported`. Leave `custom_domain` empty until the Hub runs in a regular
-environment. A name in front of the Azure address, for example through Cloudflare's proxy, does not
-need this and is a separate piece of work. The rest of this section describes how it works in a regular
-environment.
+**Only in a regular environment.** An *express* Container Apps environment refuses custom domains: the deploy
+stops with `ExpressCustomDomainsNotSupported`. A subscription may allow only one regular environment (the
+student one does), so the Hub can join an existing one instead of making its own, see the next section.
 
 By default the Hub answers on Azure's address (`https://ca-....azurecontainerapps.io`). `custom_domain` in
 the environment's tfvars gives it a name of your own as well, with a free certificate that Azure makes and
@@ -124,6 +121,41 @@ What the deploy needs, once per environment:
 Without `CLOUDFLARE_ZONE_ID` Terraform makes no records, and you have to create them yourself before the
 deploy. Read the values with `terraform output custom_domain_target` (the CNAME's target) and
 `terraform output custom_domain_verification_id` (the TXT's value).
+
+## Running in an environment that already exists
+
+`shared_environment_name` and `shared_environment_resource_group` in the tfvars make the Hub join an existing
+Container Apps environment instead of making one (develop joins `kc-dash-env`). Terraform only reads that
+environment; it never changes or deletes it. The Hub's own environment and log workspace are not made, and
+its logs go to the shared environment's workspace.
+
+**The deploy identity needs a permission first, or the apply fails after it has removed the old app.** It only
+has rights on its own resource group, so someone who may create role definitions (a subscription owner) gives
+it a narrow role on the one shared environment. It can read the environment, put apps in it and manage its
+managed certificates, and nothing else, so the Hub's pipeline cannot touch what else runs there. Run once:
+
+```bash
+ENV_ID=$(az containerapp env show -g rg-kc-dash -n kc-dash-env --query id -o tsv)
+
+az role definition create --role-definition "{
+  \"Name\": \"Container Apps environment user\",
+  \"Description\": \"Read an environment, join it with an app, manage its managed certificates.\",
+  \"Actions\": [
+    \"Microsoft.App/managedEnvironments/read\",
+    \"Microsoft.App/managedEnvironments/join/action\",
+    \"Microsoft.App/managedEnvironments/managedCertificates/*\"
+  ],
+  \"AssignableScopes\": [\"$ENV_ID\"]
+}"
+
+SP=$(az ad sp show --id "$(gh variable get AZURE_CLIENT_ID_DEVELOP --repo contest-keeper/ck-hub)" --query id -o tsv)
+az role assignment create --assignee-object-id "$SP" --assignee-principal-type ServicePrincipal \
+  --role "Container Apps environment user" --scope "$ENV_ID"
+```
+
+If the deploy still stops with `AuthorizationFailed` and names an action, add that action to the role. Moving
+the Hub to another environment replaces the Container App: its Azure address changes and the Hub is down for
+a few minutes, so do it on develop first.
 
 ## Deploying from your own PC instead
 

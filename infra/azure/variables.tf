@@ -80,3 +80,20 @@ variable "cloudflare_zone_id" {
     error_message = "A Cloudflare zone id is 32 lowercase hex characters (domain Overview page, API section)."
   }
 }
+
+variable "shared_environment_name" {
+  description = "Name of an existing Container Apps environment to run the Hub in, instead of making one. The deploy identity needs the join permission on it (docs/azure.md). Leave empty to make the Hub its own environment."
+  type        = string
+  default     = ""
+}
+
+variable "shared_environment_resource_group" {
+  description = "The resource group of shared_environment_name."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.shared_environment_name == "" || var.shared_environment_resource_group != ""
+    error_message = "Name the resource group of the shared environment too."
+  }
+}

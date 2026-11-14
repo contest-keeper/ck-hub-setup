@@ -2,5 +2,8 @@
 name                = "ckhubdev"
 resource_group_name = "rg-ckhub-dev"
 min_replicas        = 0
-# custom_domain stays empty: the Hub runs in an express Container Apps environment, which Azure does not
-# allow custom domains on (docs/azure.md).
+# The subscription allows one regular Container Apps environment, which kc-dash already has. Only a regular
+# one can have a custom domain, so the Hub joins it (docs/azure.md: the join permission comes first).
+shared_environment_name           = "kc-dash-env"
+shared_environment_resource_group = "rg-kc-dash"
+custom_domain                     = "hub.dev.contestkeeper.com"
