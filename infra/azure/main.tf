@@ -152,15 +152,41 @@ resource "azurerm_log_analytics_workspace" "this" {
   tags                = var.tags
 }
 
+# Azure makes a Container Apps environment without a virtual network an "express" one, which cannot
+# read Key Vault secrets. A small network of its own makes it a regular environment.
+resource "azurerm_virtual_network" "this" {
+  name                = "vnet-${local.base}"
+  resource_group_name = data.azurerm_resource_group.this.name
+  location            = data.azurerm_resource_group.this.location
+  address_space       = ["10.20.0.0/16"]
+  tags                = var.tags
+}
+
+resource "azurerm_subnet" "apps" {
+  name                 = "snet-apps"
+  resource_group_name  = data.azurerm_resource_group.this.name
+  virtual_network_name = azurerm_virtual_network.this.name
+  address_prefixes     = ["10.20.0.0/23"]
+
+  delegation {
+    name = "container-apps"
+
+    service_delegation {
+      name    = "Microsoft.App/environments"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
+    }
+  }
+}
+
 resource "azurerm_container_app_environment" "this" {
   name                       = "cae-${local.base}"
   resource_group_name        = data.azurerm_resource_group.this.name
   location                   = data.azurerm_resource_group.this.location
   logs_destination           = "log-analytics"
+  infrastructure_subnet_id   = azurerm_subnet.apps.id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
   tags                       = var.tags
 
-  # Without a workload profile Azure makes an express environment, which cannot read Key Vault secrets.
   workload_profile {
     name                  = "Consumption"
     workload_profile_type = "Consumption"
