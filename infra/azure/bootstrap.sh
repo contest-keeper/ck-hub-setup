@@ -33,7 +33,7 @@ read -r -p "Set up Keeper Hub (develop and production) in this subscription? [y/
 # Resource providers are registered here, once, because the identities GitHub signs in as have no
 # rights outside their resource group (the Terraform provider is told not to register them).
 for namespace in Microsoft.App Microsoft.DBforPostgreSQL Microsoft.KeyVault Microsoft.OperationalInsights \
-  Microsoft.ManagedIdentity Microsoft.Storage Microsoft.Authorization; do
+  Microsoft.ManagedIdentity Microsoft.Storage Microsoft.Authorization Microsoft.Network; do
   az provider register --namespace "$namespace" --wait
 done
 
