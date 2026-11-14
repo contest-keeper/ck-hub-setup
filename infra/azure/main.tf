@@ -266,3 +266,18 @@ resource "azurerm_container_app" "hub" {
   }
 
 }
+
+# ---------------------------------------------------------------- custom domain
+
+# Azure checks the DNS records before it adds the name, and then issues and renews a free certificate for
+# it. Without a certificate id Azure makes the managed one itself; it sets the two fields below
+# afterwards, so Terraform must not try to change them back.
+resource "azurerm_container_app_custom_domain" "hub" {
+  count            = var.custom_domain != "" ? 1 : 0
+  name             = var.custom_domain
+  container_app_id = azurerm_container_app.hub.id
+
+  lifecycle {
+    ignore_changes = [certificate_binding_type, container_app_environment_certificate_id]
+  }
+}
