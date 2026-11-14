@@ -58,3 +58,14 @@ variable "registry_password" {
   default     = ""
   sensitive   = true
 }
+
+variable "custom_domain" {
+  description = "A hostname the Hub also answers on, for example hub.dev.contestkeeper.com. Azure makes and renews its certificate. The DNS records in docs/azure.md must exist before this is applied. Leave empty to use only Azure's own address."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.custom_domain == "" || can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$", var.custom_domain))
+    error_message = "Use a lowercase hostname such as hub.dev.contestkeeper.com."
+  }
+}
