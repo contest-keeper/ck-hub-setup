@@ -123,6 +123,29 @@ resource "azurerm_key_vault_secret" "database_url" {
   depends_on = [time_sleep.rbac]
 }
 
+# ---------------------------------------------------------------- downloads
+
+# Installers live in a private container. The Hub sends visitors to a link that works for a few
+# minutes, signed with this account's key, so the storage address is never public.
+resource "azurerm_storage_account" "downloads" {
+  name                            = "${var.name}dl${local.suffix}"
+  resource_group_name             = data.azurerm_resource_group.this.name
+  location                        = data.azurerm_resource_group.this.location
+  account_tier                    = "Standard"
+  account_replication_type        = "LRS"
+  account_kind                    = "StorageV2"
+  min_tls_version                 = "TLS1_2"
+  https_traffic_only_enabled      = true
+  allow_nested_items_to_be_public = false
+  tags                            = merge(var.tags, { component = "downloads" })
+}
+
+resource "azurerm_storage_container" "downloads" {
+  name                  = "downloads"
+  storage_account_id    = azurerm_storage_account.downloads.id
+  container_access_type = "private"
+}
+
 # ---------------------------------------------------------------- the Hub
 
 resource "azurerm_log_analytics_workspace" "this" {
@@ -158,6 +181,11 @@ resource "azurerm_container_app" "hub" {
   secret {
     name  = "database-url"
     value = "postgres://ckhub:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.hub.name}?sslmode=require"
+  }
+
+  secret {
+    name  = "download-key"
+    value = azurerm_storage_account.downloads.primary_access_key
   }
 
   # The image is private, so Azure signs in to ghcr.io with a token that can only read packages.
@@ -206,6 +234,21 @@ resource "azurerm_container_app" "hub" {
       env {
         name        = "CK_DATABASE_URL"
         secret_name = "database-url"
+      }
+
+      env {
+        name  = "CK_DOWNLOAD_ACCOUNT"
+        value = azurerm_storage_account.downloads.name
+      }
+
+      env {
+        name  = "CK_DOWNLOAD_CONTAINER"
+        value = azurerm_storage_container.downloads.name
+      }
+
+      env {
+        name        = "CK_DOWNLOAD_KEY"
+        secret_name = "download-key"
       }
 
       liveness_probe {

@@ -18,3 +18,8 @@ output "key_vault" {
 output "database_host" {
   value = azurerm_postgresql_flexible_server.this.fqdn
 }
+
+output "download_storage_account" {
+  description = "The private storage account that holds the installers."
+  value       = azurerm_storage_account.downloads.name
+}
