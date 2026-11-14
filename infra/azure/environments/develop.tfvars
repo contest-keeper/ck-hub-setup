@@ -2,3 +2,4 @@
 name                = "ckhubdev"
 resource_group_name = "rg-ckhub-dev"
 min_replicas        = 0
+custom_domain       = "hub.dev.contestkeeper.com"

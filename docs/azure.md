@@ -90,6 +90,24 @@ Remove `allowed_client_ips` afterwards and apply again, so the database is close
 
 Then tell the Hub about your sticks from Keeper Forge (`ck-forge registry push --hub <address> --user admin`).
 
+## A name of your own for the Hub
+
+By default the Hub answers on Azure's address (`https://ca-....azurecontainerapps.io`). `custom_domain` in
+the environment's tfvars gives it a name of your own as well, with a free certificate that Azure makes and
+renews. Develop uses `hub.dev.contestkeeper.com`.
+
+Make the two DNS records first. Terraform fails, and so does the deploy, if Azure cannot find them. In
+Cloudflare set both to **DNS only** (grey cloud): a proxied record hides the check from Azure.
+
+| Type | Name | Value |
+|---|---|---|
+| CNAME | the hostname, for example `hub.dev` | the output `custom_domain_target` |
+| TXT | `asuid.` and the hostname, for example `asuid.hub.dev` | the output `custom_domain_verification_id` |
+
+Both values stay the same as long as the Container App environment is not recreated. Read them with
+`terraform output`, or from the last deploy's "Show the address" step. The Hub keeps answering on Azure's
+address too, and the deploy's health check still uses that one.
+
 ## Deploying from your own PC instead
 
 ```sh
