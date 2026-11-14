@@ -1,0 +1,65 @@
+# Keeper Hub with its database and automatic HTTPS, on one machine.
+#
+#   cp .env.example .env      # then fill it in
+#   docker compose up -d
+#
+# Caddy gets and renews a free certificate for CK_DOMAIN. Point that name at this machine and open
+# ports 80 and 443. For a trial on your own PC use CK_DOMAIN=localhost (Caddy makes a local
+# certificate your browser will warn about).
+
+services:
+  hub:
+    image: ${CK_HUB_IMAGE:-ghcr.io/contest-keeper/ck-hub:latest}
+    restart: unless-stopped
+    environment:
+      # The database is on this private network, so the connection needs no TLS.
+      CK_DATABASE_URL: postgres://ckhub:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/ckhub?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # Also on the public network (no ports are published there): the Hub will call out to the judge sites.
+    networks: [internal, public]
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ckhub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ckhub
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ckhub -d ckhub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CK_DOMAIN: ${CK_DOMAIN:?set CK_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [hub]
+    networks: [internal, public]
+
+networks:
+  internal:
+    internal: true
+  public: {}
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

@@ -9,3 +9,15 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  - package-ecosystem: terraform
+    directory: /infra/azure
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+  - package-ecosystem: docker-compose
+    directory: /compose
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
