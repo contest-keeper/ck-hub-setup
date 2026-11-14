@@ -30,8 +30,8 @@ up with `docker compose exec db pg_dump -U ckhub ckhub > backup.sql`.
 
 ## Azure
 
-See [`docs/azure.md`](docs/azure.md). In short: run `infra/azure/bootstrap.sh` once, set five variables in
-the GitHub environment, then run the **Deploy to Azure** workflow with the Hub version you want.
+See [`docs/azure.md`](docs/azure.md). In short: run `infra/azure/bootstrap.sh` once, set the GitHub variables and environments it prints,
+then let `ck-hub` deploy: every merge to `develop` goes to the develop environment, every release to production.
 
 ## Checks
 

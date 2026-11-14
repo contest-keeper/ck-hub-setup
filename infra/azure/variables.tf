@@ -1,7 +1,6 @@
 variable "name" {
   description = "Short name used in resource names. Lowercase letters and digits."
   type        = string
-  default     = "ckhub"
 
   validation {
     condition     = can(regex("^[a-z0-9]{3,12}$", var.name))
@@ -12,7 +11,6 @@ variable "name" {
 variable "resource_group_name" {
   description = "The resource group bootstrap.sh made for the Hub. Everything is created inside it, in its region."
   type        = string
-  default     = "rg-ckhub"
 }
 
 variable "image" {
