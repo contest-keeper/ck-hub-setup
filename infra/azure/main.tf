@@ -11,9 +11,10 @@ locals {
   base   = "${var.name}-${local.suffix}"
 }
 
-# The generated password exists only while Terraform runs. It goes straight into the database and
-# the Key Vault through write-only arguments, so it is not in the state, the plan or any file.
-ephemeral "random_password" "db" {
+# The generated password is kept in the Terraform state (private, Azure AD only) because the Container
+# App takes its database address as a plain secret: this subscription allows only one regular
+# Container Apps environment, so the Hub runs in an express environment, which cannot read Key Vault.
+resource "random_password" "db" {
   length  = 40
   special = false
 }
@@ -34,7 +35,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   storage_mb          = 32768
 
   administrator_login               = "ckhub"
-  administrator_password_wo         = ephemeral.random_password.db.result
+  administrator_password_wo         = random_password.db.result
   administrator_password_wo_version = var.db_password_version
 
   backup_retention_days         = 7
@@ -114,31 +115,12 @@ resource "time_sleep" "rbac" {
 resource "azurerm_key_vault_secret" "database_url" {
   name             = "database-url"
   key_vault_id     = azurerm_key_vault.this.id
-  value_wo         = "postgres://ckhub:${ephemeral.random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.hub.name}?sslmode=require"
+  value_wo         = "postgres://ckhub:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.hub.name}?sslmode=require"
   value_wo_version = var.db_password_version
   content_type     = "text/plain"
   tags             = var.tags
 
   depends_on = [time_sleep.rbac]
-}
-
-resource "azurerm_user_assigned_identity" "hub" {
-  name                = "id-${local.base}"
-  resource_group_name = data.azurerm_resource_group.this.name
-  location            = data.azurerm_resource_group.this.location
-  tags                = var.tags
-}
-
-resource "azurerm_role_assignment" "hub_reads_secrets" {
-  scope                = azurerm_key_vault.this.id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_user_assigned_identity.hub.principal_id
-}
-
-# The Container App reads the secret as soon as it starts, so wait for this role to apply too.
-resource "time_sleep" "hub_rbac" {
-  create_duration = "60s"
-  depends_on      = [azurerm_role_assignment.hub_reads_secrets]
 }
 
 # ---------------------------------------------------------------- the Hub
@@ -152,38 +134,11 @@ resource "azurerm_log_analytics_workspace" "this" {
   tags                = var.tags
 }
 
-# Azure makes a Container Apps environment without a virtual network an "express" one, which cannot
-# read Key Vault secrets. A small network of its own makes it a regular environment.
-resource "azurerm_virtual_network" "this" {
-  name                = "vnet-${local.base}"
-  resource_group_name = data.azurerm_resource_group.this.name
-  location            = data.azurerm_resource_group.this.location
-  address_space       = ["10.20.0.0/16"]
-  tags                = var.tags
-}
-
-resource "azurerm_subnet" "apps" {
-  name                 = "subnet-apps"
-  resource_group_name  = data.azurerm_resource_group.this.name
-  virtual_network_name = azurerm_virtual_network.this.name
-  address_prefixes     = ["10.20.0.0/23"]
-
-  delegation {
-    name = "container-apps"
-
-    service_delegation {
-      name    = "Microsoft.App/environments"
-      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
-    }
-  }
-}
-
 resource "azurerm_container_app_environment" "this" {
   name                       = "cae-${local.base}"
   resource_group_name        = data.azurerm_resource_group.this.name
   location                   = data.azurerm_resource_group.this.location
   logs_destination           = "log-analytics"
-  infrastructure_subnet_id   = azurerm_subnet.apps.id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
   tags                       = var.tags
 
@@ -200,15 +155,9 @@ resource "azurerm_container_app" "hub" {
   revision_mode                = "Single"
   tags                         = var.tags
 
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.hub.id]
-  }
-
   secret {
-    name                = "database-url"
-    key_vault_secret_id = azurerm_key_vault_secret.database_url.versionless_id
-    identity            = azurerm_user_assigned_identity.hub.id
+    name  = "database-url"
+    value = "postgres://ckhub:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.hub.name}?sslmode=require"
   }
 
   ingress {
@@ -253,5 +202,4 @@ resource "azurerm_container_app" "hub" {
     }
   }
 
-  depends_on = [time_sleep.hub_rbac]
 }
