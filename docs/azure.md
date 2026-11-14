@@ -92,9 +92,16 @@ Then tell the Hub about your sticks from Keeper Forge (`ck-forge registry push -
 
 ## A name of your own for the Hub
 
+**Not usable today.** The Hub runs in an *express* Container Apps environment (the subscription allows only
+one regular environment), and Azure refuses custom domains there: the deploy stops with
+`ExpressCustomDomainsNotSupported`. Leave `custom_domain` empty until the Hub runs in a regular
+environment. A name in front of the Azure address, for example through Cloudflare's proxy, does not
+need this and is a separate piece of work. The rest of this section describes how it works in a regular
+environment.
+
 By default the Hub answers on Azure's address (`https://ca-....azurecontainerapps.io`). `custom_domain` in
 the environment's tfvars gives it a name of your own as well, with a free certificate that Azure makes and
-renews. Develop uses `hub.dev.contestkeeper.com`. The Hub keeps answering on Azure's address too, and the
+renews. The Hub keeps answering on Azure's address too, and the
 deploy's health check still uses that one.
 
 **DNS is made by the deploy.** Azure wants two records before it adds the name: a CNAME from the hostname to
