@@ -1,4 +1,4 @@
-# ck-hub-setup
+# ck-infra
 
 Docker Compose setup for running Keeper Hub.
 

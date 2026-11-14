@@ -64,7 +64,7 @@ jobs:
       # The Terraform lives here, whichever repository called this workflow.
       - uses: actions/checkout@v7
         with:
-          repository: contest-keeper/ck-hub-setup
+          repository: contest-keeper/ck-infra
           ref: develop
       - uses: hashicorp/setup-terraform@v3
         with:

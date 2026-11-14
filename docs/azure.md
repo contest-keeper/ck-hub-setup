@@ -44,14 +44,14 @@ admin rights on the GitHub organization.
 
    It makes the resource groups, a locked-down storage account for the Terraform state, and one Entra application
    per environment that GitHub Actions signs in as through OIDC. There is **no client secret** to store or
-   rotate: each application only trusts tokens GitHub issues for that environment of `ck-hub` or `ck-hub-setup`,
+   rotate: each application only trusts tokens GitHub issues for that environment of `ck-hub` or `ck-infra`,
    and only has rights on its own resource group (plus the state container). A develop deploy cannot touch
    production.
 
 2. **Set the GitHub variables** the script prints (`gh variable set ...`, organization level). They are
    identifiers, not secrets.
 
-3. **Make the environments** `develop` and `production` in both `ck-hub` and `ck-hub-setup` (Settings,
+3. **Make the environments** `develop` and `production` in both `ck-hub` and `ck-infra` (Settings,
    Environments). On `production`, add yourself as a required reviewer and allow deployments from `main` only. On
    `develop`, allow the `develop` branch only. These rules are what decide who can deploy: Azure trusts the
    environment name.
@@ -61,7 +61,7 @@ admin rights on the GitHub organization.
    image.)
 
 5. **First deploy.** Merge something into `develop` in `ck-hub`, or run **Deploy to Azure** by hand in
-   `ck-hub-setup` (environment, image tag, *apply*; run once without *apply* to read the plan). The job summary
+   `ck-infra` (environment, image tag, *apply*; run once without *apply* to read the plan). The job summary
    shows the Hub's address.
 
 ## First organizer account
