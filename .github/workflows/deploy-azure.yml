@@ -1,0 +1,76 @@
+name: Deploy to Azure
+
+# Plans (and, when asked, applies) the Terraform in infra/azure. Run it by hand from the Actions
+# tab. It signs in to Azure with OIDC: no password or client secret is stored in GitHub. The job
+# runs in the "production" environment, which should require your approval (see docs/azure.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Hub version to run, as in the release without the v (for example 0.1.0)
+        required: true
+        type: string
+      apply:
+        description: Apply the plan. Leave off to only see what would change.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-production
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_image: ghcr.io/contest-keeper/ck-hub:${{ inputs.image_tag }}
+      TF_IN_AUTOMATION: "true"
+    defaults:
+      run:
+        working-directory: infra/azure
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.2
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Init
+        env:
+          STATE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+          STATE_STORAGE: ${{ vars.TFSTATE_STORAGE }}
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${STATE_GROUP}" \
+            -backend-config="storage_account_name=${STATE_STORAGE}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=ck-hub.tfstate" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="use_oidc=true"
+      - run: terraform plan -input=false -out=tfplan
+      - name: Apply
+        if: inputs.apply
+        run: terraform apply -input=false tfplan
+      - name: Show the address
+        if: inputs.apply
+        run: |
+          {
+            echo "### Keeper Hub"
+            echo
+            echo "Address: $(terraform output -raw hub_url)"
+          } >> "$GITHUB_STEP_SUMMARY"

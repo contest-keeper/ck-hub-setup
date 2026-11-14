@@ -1,0 +1,6 @@
+# Copy to backend.hcl (not committed) and fill in what bootstrap-state.sh printed.
+resource_group_name  = "rg-ckhub-tfstate"
+storage_account_name = "REPLACE_WITH_STORAGE_ACCOUNT"
+container_name       = "tfstate"
+key                  = "ck-hub.tfstate"
+use_azuread_auth     = true
