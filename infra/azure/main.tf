@@ -148,7 +148,31 @@ resource "azurerm_storage_container" "downloads" {
 
 # ---------------------------------------------------------------- the Hub
 
+# Where the Hub runs. By default it gets an environment of its own. When shared_environment_name is set it joins
+# an existing one instead (a subscription may allow only one regular environment, and only a regular one can
+# have a custom domain). The shared one is only read here: its owner keeps it.
+locals {
+  own_environment = var.shared_environment_name == ""
+}
+
+data "azurerm_container_app_environment" "shared" {
+  count               = local.own_environment ? 0 : 1
+  name                = var.shared_environment_name
+  resource_group_name = var.shared_environment_resource_group
+}
+
+moved {
+  from = azurerm_log_analytics_workspace.this
+  to   = azurerm_log_analytics_workspace.this[0]
+}
+
+moved {
+  from = azurerm_container_app_environment.this
+  to   = azurerm_container_app_environment.this[0]
+}
+
 resource "azurerm_log_analytics_workspace" "this" {
+  count               = local.own_environment ? 1 : 0
   name                = "log-${local.base}"
   resource_group_name = data.azurerm_resource_group.this.name
   location            = data.azurerm_resource_group.this.location
@@ -158,11 +182,12 @@ resource "azurerm_log_analytics_workspace" "this" {
 }
 
 resource "azurerm_container_app_environment" "this" {
+  count                      = local.own_environment ? 1 : 0
   name                       = "cae-${local.base}"
   resource_group_name        = data.azurerm_resource_group.this.name
   location                   = data.azurerm_resource_group.this.location
   logs_destination           = "log-analytics"
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.this[0].id
   tags                       = var.tags
 
   workload_profile {
@@ -174,7 +199,8 @@ resource "azurerm_container_app_environment" "this" {
 resource "azurerm_container_app" "hub" {
   name                         = "ca-${local.base}"
   resource_group_name          = data.azurerm_resource_group.this.name
-  container_app_environment_id = azurerm_container_app_environment.this.id
+  container_app_environment_id = local.own_environment ? azurerm_container_app_environment.this[0].id : data.azurerm_container_app_environment.shared[0].id
+  workload_profile_name        = "Consumption"
   revision_mode                = "Single"
   tags                         = var.tags
 
