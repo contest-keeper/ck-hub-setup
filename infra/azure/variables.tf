@@ -51,3 +51,10 @@ variable "tags" {
   type        = map(string)
   default     = { project = "contest-keeper", component = "hub" }
 }
+
+variable "registry_password" {
+  description = "A GitHub token with read:packages, so the Container App can pull a private image. Leave empty for a public image."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

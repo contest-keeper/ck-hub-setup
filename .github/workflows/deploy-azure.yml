@@ -33,3 +33,4 @@ jobs:
       environment: ${{ inputs.environment }}
       image_tag: ${{ inputs.image_tag }}
       apply: ${{ inputs.apply }}
+    secrets: inherit
