@@ -1,0 +1,83 @@
+name: Publish download (reusable)
+
+# Puts built files (an installer, for example) on the environment's website storage account, so the site
+# serves the download from Azure: https://<site>/downloads/<folder>/<file>. It also writes
+# latest.json next to them with the version, which the site shows. The calling workflow builds the files
+# and uploads them as an artifact first. It signs in to Azure with OIDC like deploy.yml.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: develop or production
+        required: true
+        type: string
+      artifact:
+        description: Name of the workflow artifact that holds the files
+        required: true
+        type: string
+      folder:
+        description: Folder under downloads/, such as forge
+        required: true
+        type: string
+      version:
+        description: Version text written to latest.json
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: azure-download-${{ inputs.environment }}-${{ inputs.folder }}
+      cancel-in-progress: false
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      FOLDER: ${{ inputs.folder }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check the inputs
+        run: |
+          case "$ENVIRONMENT" in
+            develop) echo "RESOURCE_GROUP=rg-ckhub-dev" >> "$GITHUB_ENV" ;;
+            production) echo "RESOURCE_GROUP=rg-ckhub" >> "$GITHUB_ENV" ;;
+            *) echo "environment must be develop or production" >&2; exit 1 ;;
+          esac
+          [[ "$FOLDER" =~ ^[a-z0-9-]+$ ]] || { echo "folder must be lowercase letters, digits and dashes" >&2; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: files
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars[format('AZURE_CLIENT_ID_{0}', inputs.environment == 'production' && 'PRODUCTION' || 'DEVELOP')] }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Find the website storage account
+        run: |
+          account=$(az storage account list --resource-group "$RESOURCE_GROUP" \
+            --query "[?tags.component=='website'].name | [0]" -o tsv)
+          test -n "$account" || { echo "No website storage account in $RESOURCE_GROUP: deploy the website first" >&2; exit 1; }
+          echo "ACCOUNT=$account" >> "$GITHUB_ENV"
+      - name: Upload the files
+        run: |
+          az storage blob upload-batch --account-name "$ACCOUNT" --auth-mode key \
+            --destination "\$web" --destination-path "downloads/${FOLDER}" \
+            --source files --overwrite --only-show-errors
+          jq -n --arg version "$VERSION" '{version: $version}' > latest.json
+          az storage blob upload --account-name "$ACCOUNT" --auth-mode key \
+            --container-name "\$web" --name "downloads/${FOLDER}/latest.json" --file latest.json \
+            --content-cache-control "no-cache" --overwrite --only-show-errors
+      - name: Show the address
+        run: |
+          site=$(az storage account show --name "$ACCOUNT" --resource-group "$RESOURCE_GROUP" --query primaryEndpoints.web -o tsv)
+          {
+            echo "### Download published (${ENVIRONMENT}) ${VERSION}"
+            echo
+            echo "${site}downloads/${FOLDER}/"
+          } >> "$GITHUB_STEP_SUMMARY"
