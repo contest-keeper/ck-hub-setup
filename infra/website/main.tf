@@ -22,9 +22,10 @@ resource "azurerm_storage_account" "site" {
   https_traffic_only_enabled      = true
   allow_nested_items_to_be_public = false
   tags                            = var.tags
+}
 
-  static_website {
-    index_document     = "index.html"
-    error_404_document = "index.html"
-  }
+resource "azurerm_storage_account_static_website" "site" {
+  storage_account_id = azurerm_storage_account.site.id
+  index_document     = "index.html"
+  error_404_document = "index.html"
 }
