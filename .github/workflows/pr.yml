@@ -26,6 +26,10 @@ jobs:
         working-directory: infra/azure
       - run: terraform validate
         working-directory: infra/azure
+      - run: terraform init -backend=false -input=false
+        working-directory: infra/website
+      - run: terraform validate
+        working-directory: infra/website
   compose:
     runs-on: ubuntu-latest
     steps:

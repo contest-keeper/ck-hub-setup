@@ -1,0 +1,88 @@
+name: Deploy Website (reusable)
+
+# Makes sure the static site's storage account exists for one environment, then uploads the built
+# site to it. The calling workflow builds the site and uploads it as an artifact first. It signs in to
+# Azure with OIDC like deploy.yml: no password or client secret is stored anywhere.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: develop or production
+        required: true
+        type: string
+      artifact:
+        description: Name of the workflow artifact that holds the built site
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: azure-website-${{ inputs.environment }}
+      cancel-in-progress: false
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars[format('AZURE_CLIENT_ID_{0}', inputs.environment == 'production' && 'PRODUCTION' || 'DEVELOP')] }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_IN_AUTOMATION: "true"
+    steps:
+      - name: Check the environment name
+        run: |
+          case "$ENVIRONMENT" in
+            develop|production) ;;
+            *) echo "environment must be develop or production" >&2; exit 1 ;;
+          esac
+      - uses: actions/checkout@v7
+        with:
+          repository: contest-keeper/ck-infra
+          ref: develop
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: site-dist
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Make the storage account
+        working-directory: infra/website
+        env:
+          STATE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+          STATE_STORAGE: ${{ vars.TFSTATE_STORAGE }}
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${STATE_GROUP}" \
+            -backend-config="storage_account_name=${STATE_STORAGE}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=ck-website-${ENVIRONMENT}.tfstate" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="use_oidc=true"
+          terraform apply -input=false -auto-approve -var-file="environments/${ENVIRONMENT}.tfvars"
+          echo "ACCOUNT=$(terraform output -raw storage_account)" >> "$GITHUB_ENV"
+          echo "SITE_URL=$(terraform output -raw website_url)" >> "$GITHUB_ENV"
+      - name: Upload the site
+        run: |
+          az storage blob upload-batch --account-name "$ACCOUNT" --auth-mode key \
+            --destination '$web' --source site-dist --overwrite --only-show-errors
+      - name: Show the address
+        run: |
+          {
+            echo "### Contest Keeper website (${ENVIRONMENT})"
+            echo
+            echo "Address: ${SITE_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
