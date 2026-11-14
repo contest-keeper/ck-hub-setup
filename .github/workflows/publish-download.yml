@@ -1,0 +1,96 @@
+name: Publish download (reusable)
+
+# Puts built files (an installer, for example) in the environment's private downloads container, which
+# the Hub links to with short-lived links. It also writes latest.json with the version on the website
+# storage, which the site shows. The calling workflow builds the files
+# and uploads them as an artifact first. It signs in to Azure with OIDC like deploy.yml.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: develop or production
+        required: true
+        type: string
+      artifact:
+        description: Name of the workflow artifact that holds the files
+        required: true
+        type: string
+      folder:
+        description: Folder under downloads/, such as forge
+        required: true
+        type: string
+      version:
+        description: Version text written to latest.json
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: azure-download-${{ inputs.environment }}-${{ inputs.folder }}
+      cancel-in-progress: false
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      FOLDER: ${{ inputs.folder }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check the inputs
+        run: |
+          case "$ENVIRONMENT" in
+            develop) echo "RESOURCE_GROUP=rg-ckhub-dev" >> "$GITHUB_ENV" ;;
+            production) echo "RESOURCE_GROUP=rg-ckhub" >> "$GITHUB_ENV" ;;
+            *) echo "environment must be develop or production" >&2; exit 1 ;;
+          esac
+          [[ "$FOLDER" =~ ^[a-z0-9-]+$ ]] || { echo "folder must be lowercase letters, digits and dashes" >&2; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: files
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars[format('AZURE_CLIENT_ID_{0}', inputs.environment == 'production' && 'PRODUCTION' || 'DEVELOP')] }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Find the storage accounts
+        run: |
+          find() {
+            az storage account list --resource-group "$RESOURCE_GROUP" \
+              --query "[?tags.component=='$1'].name | [0]" -o tsv
+          }
+          downloads=$(find downloads)
+          site=$(find website)
+          test -n "$downloads" || { echo "No downloads storage account in $RESOURCE_GROUP: deploy the Hub first" >&2; exit 1; }
+          test -n "$site" || { echo "No website storage account in $RESOURCE_GROUP: deploy the website first" >&2; exit 1; }
+          echo "DOWNLOADS=$downloads" >> "$GITHUB_ENV"
+          echo "SITE=$site" >> "$GITHUB_ENV"
+      - name: Upload the files to private storage
+        run: |
+          az storage blob upload-batch --account-name "$DOWNLOADS" --auth-mode key \
+            --destination downloads --destination-path "${FOLDER}" \
+            --source files --overwrite --only-show-errors
+      - name: Publish the version on the site
+        run: |
+          jq -n --arg version "$VERSION" '{version: $version}' > latest.json
+          az storage blob upload --account-name "$SITE" --auth-mode key \
+            --container-name "\$web" --name "downloads/${FOLDER}/latest.json" --file latest.json \
+            --content-cache-control "no-cache" --overwrite --only-show-errors
+          # Earlier runs put the files on the public site. They are only served through the Hub now.
+          az storage blob list --account-name "$SITE" --auth-mode key --container-name "\$web" \
+            --prefix "downloads/${FOLDER}/" --query "[?name!='downloads/${FOLDER}/latest.json'].name" -o tsv > stale.txt
+          while read -r name; do
+            az storage blob delete --account-name "$SITE" --auth-mode key --container-name "\$web" --name "$name" --only-show-errors
+          done < stale.txt
+      - name: Show the address
+        run: |
+          {
+            echo "### Download published (${ENVIRONMENT}) ${VERSION}"
+            echo
+            echo "Files are in the private container of ${DOWNLOADS}; the Hub links to them."
+          } >> "$GITHUB_STEP_SUMMARY"

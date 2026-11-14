@@ -2,14 +2,43 @@ name: PR
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
-  title:
-    uses: contest-keeper/.github/.github/workflows/pr-title.yml@main
   common:
     uses: contest-keeper/.github/.github/workflows/common-ci.yml@main
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.2
+      - run: terraform fmt -check -recursive
+        working-directory: infra
+      - run: terraform init -backend=false -input=false
+        working-directory: infra/azure
+      - run: terraform validate
+        working-directory: infra/azure
+      - run: terraform init -backend=false -input=false
+        working-directory: infra/website
+      - run: terraform validate
+        working-directory: infra/website
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the compose file
+        run: docker compose config -q
+        working-directory: compose
+        env:
+          POSTGRES_PASSWORD: not-a-real-password
+          CK_DOMAIN: hub.example.org

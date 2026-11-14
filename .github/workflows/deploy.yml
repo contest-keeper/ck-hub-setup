@@ -1,0 +1,142 @@
+name: Deploy Hub (reusable)
+
+# Plans and applies the Terraform in infra/azure for one environment. Other repositories call it
+# (ck-hub does, after every develop build and every release); deploy-azure.yml runs it by hand.
+#
+# It signs in to Azure with OIDC: no password or client secret is stored anywhere. Each environment
+# has its own Azure identity with rights on its own resource group only, and Azure only accepts
+# tokens GitHub issues for that environment of the calling repository. Which people or builds may
+# deploy is therefore decided by the GitHub environment (required reviewers, allowed branches).
+#
+# The non-secret identifiers come from GitHub variables (organization or repository level):
+#   AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, TFSTATE_RESOURCE_GROUP, TFSTATE_STORAGE,
+#   AZURE_CLIENT_ID_DEVELOP, AZURE_CLIENT_ID_PRODUCTION   (bootstrap.sh prints them)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: develop or production
+        required: true
+        type: string
+      image_tag:
+        description: Hub image tag to run, such as 0.2.0 or sha-0123456789ab
+        required: true
+        type: string
+      infra_ref:
+        description: Branch of ck-infra whose Terraform to run, develop or main. Production must use main.
+        required: true
+        type: string
+      apply:
+        description: Apply the plan. When false, only show what would change.
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      registry_token:
+        description: GitHub token with read:packages, to pull a private Hub image
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    # One deploy at a time per environment, and never cancel one half way.
+    concurrency:
+      group: azure-${{ inputs.environment }}
+      cancel-in-progress: false
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      INFRA_REF: ${{ inputs.infra_ref }}
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars[format('AZURE_CLIENT_ID_{0}', inputs.environment == 'production' && 'PRODUCTION' || 'DEVELOP')] }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_image: ghcr.io/contest-keeper/ck-hub:${{ inputs.image_tag }}
+      TF_VAR_registry_password: ${{ secrets.registry_token }}
+      TF_IN_AUTOMATION: "true"
+    defaults:
+      run:
+        working-directory: infra/azure
+    steps:
+      - name: Check the environment name
+        run: |
+          case "$ENVIRONMENT" in
+            develop|production) ;;
+            *) echo "environment must be develop or production" >&2; exit 1 ;;
+          esac
+          case "$INFRA_REF" in
+            develop|main) ;;
+            *) echo "infra_ref must be develop or main" >&2; exit 1 ;;
+          esac
+          if [ "$ENVIRONMENT" = production ] && [ "$INFRA_REF" != main ]; then
+            echo "production deploys only run the Terraform on main" >&2; exit 1
+          fi
+        working-directory: .
+      # The Terraform lives here, whichever repository called this workflow.
+      - uses: actions/checkout@v7
+        with:
+          repository: contest-keeper/ck-infra
+          ref: ${{ inputs.infra_ref }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.2
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Init
+        env:
+          STATE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+          STATE_STORAGE: ${{ vars.TFSTATE_STORAGE }}
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${STATE_GROUP}" \
+            -backend-config="storage_account_name=${STATE_STORAGE}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=ck-hub-${ENVIRONMENT}.tfstate" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="use_oidc=true"
+      - name: Plan
+        run: |
+          terraform plan -input=false -var-file="environments/${ENVIRONMENT}.tfvars" -out=tfplan
+          # Only the resource addresses and actions, never values, so no secret can reach the summary.
+          {
+            echo "### Terraform plan (${ENVIRONMENT}, ck-infra ${INFRA_REF})"
+            echo
+            echo '```'
+            terraform show -no-color tfplan | grep -E '^ +# |^Plan:|^No changes' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Apply
+        if: inputs.apply
+        run: terraform apply -input=false tfplan
+      - name: Show the address
+        if: inputs.apply
+        run: |
+          {
+            echo "### Keeper Hub (${ENVIRONMENT}) ${{ inputs.image_tag }}"
+            echo
+            echo "Address: $(terraform output -raw hub_url)"
+            echo "Container app: $(terraform output -raw container_app)"
+            echo "Key Vault: $(terraform output -raw key_vault)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      # The develop copy sleeps when idle, so give it time to wake up.
+      - name: Check the Hub answers
+        if: inputs.apply
+        run: |
+          url="$(terraform output -raw hub_url)"
+          for attempt in $(seq 1 12); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url/" || true)"
+            echo "attempt ${attempt}: HTTP ${code}"
+            if [ "$code" -ge 200 ] 2>/dev/null && [ "$code" -lt 400 ]; then exit 0; fi
+            sleep 10
+          done
+          echo "The Hub at ${url} did not answer after the deploy" >&2
+          exit 1

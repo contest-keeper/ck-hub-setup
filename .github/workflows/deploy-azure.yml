@@ -1,0 +1,38 @@
+name: Deploy to Azure
+
+# Run by hand from the Actions tab to plan or apply a Hub version in one environment. Normal
+# deployments need no clicking: ck-hub deploys develop after every merge to develop and production
+# after every release (see ck-hub/.github/workflows).
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which environment
+        required: true
+        type: choice
+        options: [develop, production]
+      image_tag:
+        description: Hub image tag, for example 0.2.0 or sha-0123456789ab
+        required: true
+        type: string
+      apply:
+        description: Apply the plan. Leave off to only see what would change.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image_tag: ${{ inputs.image_tag }}
+      infra_ref: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      apply: ${{ inputs.apply }}
+    secrets:
+      registry_token: ${{ secrets.GHCR_PULL_TOKEN }}

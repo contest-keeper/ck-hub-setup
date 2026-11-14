@@ -1,6 +1,6 @@
-# ck-hub-setup
+# ck-infra
 
-Docker Compose setup for running Keeper Hub.
+Infrastructure and deployment for Contest Keeper apps: Terraform (`infra/`), reusable deploy workflows (`.github/workflows`) and Docker Compose setups (`compose/`). App code lives in the app repositories.
 
 Part of Contest Keeper (github.com/contest-keeper). Read these before changing anything:
 
@@ -10,7 +10,7 @@ Part of Contest Keeper (github.com/contest-keeper). Read these before changing a
 
 ## Checks
 
-Run before committing: docker compose config; docker compose up
+Run before committing: `docker compose config` in `compose/`; `terraform fmt -check` and `terraform validate` in each `infra/` folder
 
 ## Rules
 
