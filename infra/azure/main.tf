@@ -269,6 +269,41 @@ resource "azurerm_container_app" "hub" {
 
 # ---------------------------------------------------------------- custom domain
 
+locals {
+  # Both the hostname and the zone it lives in are needed for Terraform to make the DNS records.
+  manage_dns = var.custom_domain != "" && var.cloudflare_zone_id != ""
+}
+
+# The records Azure looks for before it adds the name. Both stay "DNS only": a proxied record hides them
+# from Azure's check.
+resource "cloudflare_dns_record" "hub_cname" {
+  count   = local.manage_dns ? 1 : 0
+  zone_id = var.cloudflare_zone_id
+  name    = var.custom_domain
+  type    = "CNAME"
+  content = azurerm_container_app.hub.ingress[0].fqdn
+  ttl     = 1
+  proxied = false
+  comment = "Keeper Hub (${var.name}), made by Terraform"
+}
+
+resource "cloudflare_dns_record" "hub_verification" {
+  count   = local.manage_dns ? 1 : 0
+  zone_id = var.cloudflare_zone_id
+  name    = "asuid.${var.custom_domain}"
+  type    = "TXT"
+  content = azurerm_container_app.hub.custom_domain_verification_id
+  ttl     = 1
+  comment = "Azure domain check for Keeper Hub (${var.name}), made by Terraform"
+}
+
+# A new record takes a moment to reach the resolvers Azure asks.
+resource "time_sleep" "dns" {
+  count           = local.manage_dns ? 1 : 0
+  create_duration = "60s"
+  depends_on      = [cloudflare_dns_record.hub_cname, cloudflare_dns_record.hub_verification]
+}
+
 # Azure checks the DNS records before it adds the name, and then issues and renews a free certificate for
 # it. Without a certificate id Azure makes the managed one itself; it sets the two fields below
 # afterwards, so Terraform must not try to change them back.
@@ -276,6 +311,8 @@ resource "azurerm_container_app_custom_domain" "hub" {
   count            = var.custom_domain != "" ? 1 : 0
   name             = var.custom_domain
   container_app_id = azurerm_container_app.hub.id
+
+  depends_on = [time_sleep.dns]
 
   lifecycle {
     ignore_changes = [certificate_binding_type, container_app_environment_certificate_id]

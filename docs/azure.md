@@ -94,19 +94,29 @@ Then tell the Hub about your sticks from Keeper Forge (`ck-forge registry push -
 
 By default the Hub answers on Azure's address (`https://ca-....azurecontainerapps.io`). `custom_domain` in
 the environment's tfvars gives it a name of your own as well, with a free certificate that Azure makes and
-renews. Develop uses `hub.dev.contestkeeper.com`.
+renews. Develop uses `hub.dev.contestkeeper.com`. The Hub keeps answering on Azure's address too, and the
+deploy's health check still uses that one.
 
-Make the two DNS records first. Terraform fails, and so does the deploy, if Azure cannot find them. In
-Cloudflare set both to **DNS only** (grey cloud): a proxied record hides the check from Azure.
+**DNS is made by the deploy.** Azure wants two records before it adds the name: a CNAME from the hostname to
+the Container App, and a TXT record `asuid.<hostname>` with the app's verification id. When
+`cloudflare_zone_id` is set, Terraform makes both in Cloudflare (DNS only, not proxied: a proxied record
+hides them from Azure), waits a minute, and then adds the name. Do not make them by hand as well: the
+deploy would stop at a record that exists already. For a record that does, delete it in Cloudflare, or
+import it into the Terraform state.
 
-| Type | Name | Value |
+What the deploy needs, once per environment:
+
+| Where | Name | What |
 |---|---|---|
-| CNAME | the hostname, for example `hub.dev` | the output `custom_domain_target` |
-| TXT | `asuid.` and the hostname, for example `asuid.hub.dev` | the output `custom_domain_verification_id` |
+| The calling repository's GitHub variables (organization or repository) | `CLOUDFLARE_ZONE_ID` | The zone id of the domain (Cloudflare, domain Overview, API section). Not a secret. |
+| The calling repository's GitHub environment `develop` or `production` | secret `CLOUDFLARE_API_TOKEN` | A token with **Zone → DNS → Edit** on that one zone, and nothing else. |
 
-Both values stay the same as long as the Container App environment is not recreated. Read them with
-`terraform output`, or from the last deploy's "Show the address" step. The Hub keeps answering on Azure's
-address too, and the deploy's health check still uses that one.
+"Calling repository" is `ck-hub` for the deploys it starts after every build, and `ck-infra` for the manual
+`deploy-azure.yml` run. A secret in one of them is not visible to the other, so set it in both.
+
+Without `CLOUDFLARE_ZONE_ID` Terraform makes no records, and you have to create them yourself before the
+deploy. Read the values with `terraform output custom_domain_target` (the CNAME's target) and
+`terraform output custom_domain_verification_id` (the TXT's value).
 
 ## Deploying from your own PC instead
 

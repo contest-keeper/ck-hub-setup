@@ -36,3 +36,4 @@ jobs:
       apply: ${{ inputs.apply }}
     secrets:
       registry_token: ${{ secrets.GHCR_PULL_TOKEN }}
+      cloudflare_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
