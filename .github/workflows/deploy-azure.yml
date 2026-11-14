@@ -32,6 +32,7 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       image_tag: ${{ inputs.image_tag }}
+      infra_ref: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
       apply: ${{ inputs.apply }}
     secrets:
       registry_token: ${{ secrets.GHCR_PULL_TOKEN }}
