@@ -163,7 +163,7 @@ resource "azurerm_virtual_network" "this" {
 }
 
 resource "azurerm_subnet" "apps" {
-  name                 = "snet-apps"
+  name                 = "subnet-apps"
   resource_group_name  = data.azurerm_resource_group.this.name
   virtual_network_name = azurerm_virtual_network.this.name
   address_prefixes     = ["10.20.0.0/23"]
