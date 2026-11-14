@@ -23,6 +23,10 @@ on:
         description: Hub image tag to run, such as 0.2.0 or sha-0123456789ab
         required: true
         type: string
+      infra_ref:
+        description: Branch of ck-infra whose Terraform to run, develop or main. Production must use main.
+        required: true
+        type: string
       apply:
         description: Apply the plan. When false, only show what would change.
         required: false
@@ -47,6 +51,7 @@ jobs:
       cancel-in-progress: false
     env:
       ENVIRONMENT: ${{ inputs.environment }}
+      INFRA_REF: ${{ inputs.infra_ref }}
       ARM_USE_OIDC: "true"
       ARM_USE_AZUREAD: "true"
       ARM_CLIENT_ID: ${{ vars[format('AZURE_CLIENT_ID_{0}', inputs.environment == 'production' && 'PRODUCTION' || 'DEVELOP')] }}
@@ -65,12 +70,19 @@ jobs:
             develop|production) ;;
             *) echo "environment must be develop or production" >&2; exit 1 ;;
           esac
+          case "$INFRA_REF" in
+            develop|main) ;;
+            *) echo "infra_ref must be develop or main" >&2; exit 1 ;;
+          esac
+          if [ "$ENVIRONMENT" = production ] && [ "$INFRA_REF" != main ]; then
+            echo "production deploys only run the Terraform on main" >&2; exit 1
+          fi
         working-directory: .
       # The Terraform lives here, whichever repository called this workflow.
       - uses: actions/checkout@v7
         with:
           repository: contest-keeper/ck-infra
-          ref: develop
+          ref: ${{ inputs.infra_ref }}
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.17.2
@@ -91,7 +103,17 @@ jobs:
             -backend-config="key=ck-hub-${ENVIRONMENT}.tfstate" \
             -backend-config="use_azuread_auth=true" \
             -backend-config="use_oidc=true"
-      - run: terraform plan -input=false -var-file="environments/${ENVIRONMENT}.tfvars" -out=tfplan
+      - name: Plan
+        run: |
+          terraform plan -input=false -var-file="environments/${ENVIRONMENT}.tfvars" -out=tfplan
+          # Only the resource addresses and actions, never values, so no secret can reach the summary.
+          {
+            echo "### Terraform plan (${ENVIRONMENT}, ck-infra ${INFRA_REF})"
+            echo
+            echo '```'
+            terraform show -no-color tfplan | grep -E '^ +# |^Plan:|^No changes' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Apply
         if: inputs.apply
         run: terraform apply -input=false tfplan
@@ -105,3 +127,16 @@ jobs:
             echo "Container app: $(terraform output -raw container_app)"
             echo "Key Vault: $(terraform output -raw key_vault)"
           } >> "$GITHUB_STEP_SUMMARY"
+      # The develop copy sleeps when idle, so give it time to wake up.
+      - name: Check the Hub answers
+        if: inputs.apply
+        run: |
+          url="$(terraform output -raw hub_url)"
+          for attempt in $(seq 1 12); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url/" || true)"
+            echo "attempt ${attempt}: HTTP ${code}"
+            if [ "$code" -ge 200 ] 2>/dev/null && [ "$code" -lt 400 ]; then exit 0; fi
+            sleep 10
+          done
+          echo "The Hub at ${url} did not answer after the deploy" >&2
+          exit 1
