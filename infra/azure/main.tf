@@ -135,6 +135,12 @@ resource "azurerm_role_assignment" "hub_reads_secrets" {
   principal_id         = azurerm_user_assigned_identity.hub.principal_id
 }
 
+# The Container App reads the secret as soon as it starts, so wait for this role to apply too.
+resource "time_sleep" "hub_rbac" {
+  create_duration = "60s"
+  depends_on      = [azurerm_role_assignment.hub_reads_secrets]
+}
+
 # ---------------------------------------------------------------- the Hub
 
 resource "azurerm_log_analytics_workspace" "this" {
@@ -214,5 +220,5 @@ resource "azurerm_container_app" "hub" {
     }
   }
 
-  depends_on = [azurerm_role_assignment.hub_reads_secrets]
+  depends_on = [time_sleep.hub_rbac]
 }

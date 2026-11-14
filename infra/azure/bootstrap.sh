@@ -27,6 +27,13 @@ echo "Subscription: $(az account show --query name -o tsv) ($subscription_id)"
 read -r -p "Set up Keeper Hub in this subscription? [y/N] " answer
 [[ "$answer" == "y" || "$answer" == "Y" ]] || { echo "Stopped."; exit 1; }
 
+# Resource providers are registered here, once, because the identity GitHub signs in as has no
+# rights outside the Hub's resource group (the Terraform provider is told not to register them).
+for namespace in Microsoft.App Microsoft.DBforPostgreSQL Microsoft.KeyVault Microsoft.OperationalInsights \
+  Microsoft.ManagedIdentity Microsoft.Storage Microsoft.Authorization; do
+  az provider register --namespace "$namespace" --wait
+done
+
 az group create --name "$hub_group" --location "$location" --output none
 az group create --name "$state_group" --location "$location" --output none
 
@@ -46,7 +53,7 @@ storage_id=$(az storage account show --name "$storage_account" --resource-group 
 # Your own account needs the blob role to make the container (the shared key is off).
 me=$(az ad signed-in-user show --query id -o tsv)
 az role assignment create --assignee-object-id "$me" --assignee-principal-type User \
-  --role "Storage Blob Data Contributor" --scope "$storage_id" --output none 2>/dev/null || true
+  --role "Storage Blob Data Contributor" --scope "$storage_id" --output none
 echo "Waiting for the role to apply..."
 sleep 45
 az storage container create --name tfstate --account-name "$storage_account" --auth-mode login --output none
@@ -76,10 +83,14 @@ fi
 hub_group_id=$(az group show --name "$hub_group" --query id -o tsv)
 for role in "Contributor" "Role Based Access Control Administrator"; do
   az role assignment create --assignee-object-id "$principal_id" --assignee-principal-type ServicePrincipal \
-    --role "$role" --scope "$hub_group_id" --output none 2>/dev/null || true
+    --role "$role" --scope "$hub_group_id" --output none
 done
 az role assignment create --assignee-object-id "$principal_id" --assignee-principal-type ServicePrincipal \
-  --role "Storage Blob Data Contributor" --scope "$storage_id" --output none 2>/dev/null || true
+  --role "Storage Blob Data Contributor" --scope "$storage_id" --output none
+# Terraform looks the state account up through its resource group before it reads the blob.
+state_group_id=$(az group show --name "$state_group" --query id -o tsv)
+az role assignment create --assignee-object-id "$principal_id" --assignee-principal-type ServicePrincipal \
+  --role "Reader" --scope "$state_group_id" --output none
 
 cat <<EOF
 

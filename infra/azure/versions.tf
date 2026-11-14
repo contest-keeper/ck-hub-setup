@@ -17,13 +17,16 @@ terraform {
     }
   }
 
-  # The state lives in an Azure Storage account made once with bootstrap-state.sh. Pass its name
+  # The state lives in an Azure Storage account made once with bootstrap.sh. Pass its name
   # with: terraform init -backend-config=backend.hcl
   backend "azurerm" {}
 }
 
 provider "azurerm" {
   features {}
+  # Resource providers are registered once by bootstrap.sh. The deploy identity only has rights
+  # on its own resource group, so it must not try to register them at subscription level.
+  resource_provider_registrations = "none"
   # The subscription comes from ARM_SUBSCRIPTION_ID (the deploy workflow sets it) or `az login`.
   # Nothing in this folder holds a credential: the workflow signs in with OIDC.
 }

@@ -42,16 +42,27 @@ repository `contest-keeper/ck-hub-setup`.
 
 ## First organizer account
 
-The Hub has no default account. Make one from your PC; the password is typed at a prompt. Allow your PC's
-address to reach the database for the moment (add `allowed_client_ips = ["<your public IP>"]` to a
-`terraform.tfvars` in `infra/azure` and run the workflow or `terraform apply`), then:
+The Hub has no default account. Make one with a command that asks for the password at a prompt (it is never
+an argument). The container already has the database address and can reach the database, so run it there:
 
 ```sh
-URL=$(az keyvault secret show --vault-name <key_vault output> --name database-url --query value -o tsv)
+az containerapp exec -g rg-ckhub -n <container app name, shown in the deploy summary>   --command "/ck-hub create-user admin"
+```
+
+Not verified yet: the image has no shell (it is a minimal image), and `exec` has to start the program
+directly with a terminal for the password prompt. If it does not work, use the fallback below.
+
+**Fallback, from your own PC.** This needs the database open to your address and read access to the secret,
+and both come from Terraform, so run `terraform apply` locally (see "Deploying from your own PC") with
+`allowed_client_ips = ["<your public IP>"]` in `terraform.tfvars`. Give yourself the Key Vault role, then:
+
+```sh
+az role assignment create --assignee "$(az ad signed-in-user show --query id -o tsv)"   --role "Key Vault Secrets User" --scope "$(az keyvault show -n <key_vault> --query id -o tsv)"
+URL=$(az keyvault secret show --vault-name <key_vault> --name database-url --query value -o tsv)
 docker run --rm -it -e CK_DATABASE_URL="$URL" ghcr.io/contest-keeper/ck-hub:0.1.0 create-user admin
 ```
 
-Remove `allowed_client_ips` afterwards and apply again so the database is closed to everything but Azure.
+Remove `allowed_client_ips` afterwards and apply again, so the database is closed to everything but Azure.
 
 Then tell the Hub about your sticks from Keeper Forge (`ck-forge registry push --hub <address> --user admin`).
 

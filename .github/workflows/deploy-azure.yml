@@ -73,4 +73,6 @@ jobs:
             echo "### Keeper Hub"
             echo
             echo "Address: $(terraform output -raw hub_url)"
+            echo "Container app: $(terraform output -raw container_app)"
+            echo "Key Vault: $(terraform output -raw key_vault)"
           } >> "$GITHUB_STEP_SUMMARY"
