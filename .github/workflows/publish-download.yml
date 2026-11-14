@@ -49,11 +49,11 @@ jobs:
             *) echo "environment must be develop or production" >&2; exit 1 ;;
           esac
           [[ "$FOLDER" =~ ^[a-z0-9-]+$ ]] || { echo "folder must be lowercase letters, digits and dashes" >&2; exit 1; }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.artifact }}
           path: files
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars[format('AZURE_CLIENT_ID_{0}', inputs.environment == 'production' && 'PRODUCTION' || 'DEVELOP')] }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
