@@ -78,7 +78,7 @@ jobs:
       - name: Upload the site
         run: |
           az storage blob upload-batch --account-name "$ACCOUNT" --auth-mode key \
-            --destination '$web' --source site-dist --overwrite --only-show-errors
+            --destination "\$web" --source site-dist --overwrite --only-show-errors
       - name: Show the address
         run: |
           {
