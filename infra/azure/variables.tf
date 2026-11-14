@@ -35,7 +35,7 @@ variable "min_replicas" {
 }
 
 variable "db_password_version" {
-  description = "Raise this number to make a new database password. The password is never stored in the state or in any file."
+  description = "Raise this number to make a new database password. The password is kept in the private Terraform state."
   type        = number
   default     = 1
 }
