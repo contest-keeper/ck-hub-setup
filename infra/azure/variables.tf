@@ -69,3 +69,14 @@ variable "custom_domain" {
     error_message = "Use a lowercase hostname such as hub.dev.contestkeeper.com."
   }
 }
+
+variable "cloudflare_zone_id" {
+  description = "The Cloudflare zone that holds custom_domain. When both are set, Terraform makes the CNAME and the asuid TXT record there; leave empty to make them yourself. Not a secret."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.cloudflare_zone_id == "" || can(regex("^[0-9a-f]{32}$", var.cloudflare_zone_id))
+    error_message = "A Cloudflare zone id is 32 lowercase hex characters (domain Overview page, API section)."
+  }
+}

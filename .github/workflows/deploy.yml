@@ -11,6 +11,7 @@ name: Deploy Hub (reusable)
 # The non-secret identifiers come from GitHub variables (organization or repository level):
 #   AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, TFSTATE_RESOURCE_GROUP, TFSTATE_STORAGE,
 #   AZURE_CLIENT_ID_DEVELOP, AZURE_CLIENT_ID_PRODUCTION   (bootstrap.sh prints them)
+#   CLOUDFLARE_ZONE_ID   (the zone of the custom domain; not a secret. Empty: Terraform makes no DNS records)
 
 on:
   workflow_call:
@@ -36,6 +37,9 @@ on:
       registry_token:
         description: GitHub token with read:packages, to pull a private Hub image
         required: false
+      cloudflare_token:
+        description: Cloudflare API token that may edit DNS in the zone of the custom domain, and nothing else
+        required: false
 
 permissions:
   contents: read
@@ -59,6 +63,8 @@ jobs:
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       TF_VAR_image: ghcr.io/contest-keeper/ck-hub:${{ inputs.image_tag }}
       TF_VAR_registry_password: ${{ secrets.registry_token }}
+      TF_VAR_cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.cloudflare_token }}
       TF_IN_AUTOMATION: "true"
     defaults:
       run:
