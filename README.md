@@ -1,6 +1,9 @@
 # ck-infra
 
-Contest Keeper Hub Setup: everything to run Keeper Hub ([`ck-hub`](https://github.com/contest-keeper/ck-hub)) on a server.
+Contest Keeper infrastructure: how the Contest Keeper apps are deployed and run. It holds the Terraform, deploy
+workflows and server setups, so the app repositories only hold code.
+
+Today it deploys Keeper Hub ([`ck-hub`](https://github.com/contest-keeper/ck-hub)). Infrastructure for other apps is added here too.
 
 | Way | Folder | For |
 |---|---|---|
