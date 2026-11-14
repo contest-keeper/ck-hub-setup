@@ -18,8 +18,8 @@ set -euo pipefail
 
 location="${1:-westeurope}"
 owner="${2:-contest-keeper}"
-# The repositories whose workflows deploy: ck-hub after its builds and releases, ck-hub-setup by hand.
-repos=("ck-hub" "ck-hub-setup")
+# The repositories whose workflows deploy: ck-hub after its builds and releases, ck-infra by hand.
+repos=("ck-hub" "ck-infra")
 state_group="rg-ckhub-tfstate"
 # environment -> resource group (must match infra/azure/environments/*.tfvars)
 declare -A groups=([develop]="rg-ckhub-dev" [production]="rg-ckhub")
@@ -109,7 +109,7 @@ done
 cat <<EOF
 
 Done. Set these as GitHub variables (identifiers, not secrets). Organization level is easiest, so
-ck-hub and ck-hub-setup both see them:
+ck-hub and ck-infra both see them:
 
   gh variable set AZURE_TENANT_ID           --org ${owner} --visibility all --body "${tenant_id}"
   gh variable set AZURE_SUBSCRIPTION_ID     --org ${owner} --visibility all --body "${subscription_id}"

@@ -1,4 +1,4 @@
-# ck-hub-setup
+# ck-infra
 
 Contest Keeper Hub Setup: everything to run Keeper Hub ([`ck-hub`](https://github.com/contest-keeper/ck-hub)) on a server.
 
